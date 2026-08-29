@@ -72,7 +72,7 @@ class ToolBox:
                 "type": "function",
                 "function": {
                     "name": "run_command",
-                    "description": "Run a shell command in the workspace and return exit code, stdout and stderr.",
+                    "description": "Run commands or tests in the workspace and return exit code, stdout and stderr. Prefer write_file for creating files.",
                     "parameters": {
                         "type": "object",
                         "properties": {"command": {"type": "string"}},

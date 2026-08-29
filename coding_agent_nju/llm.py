@@ -14,10 +14,12 @@ class ChatClient:
         payload = {
             "model": self.model,
             "messages": messages,
-            "tools": tools,
-            "tool_choice": "auto",
             "temperature": 0.2,
         }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+
         body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",

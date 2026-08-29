@@ -7,7 +7,8 @@ from .tools import ToolBox
 SYSTEM_PROMPT = """You are a coding agent running on the user's local machine.
 You can inspect and modify files only through the provided tools.
 Work in small steps: inspect files, write code, run commands or tests, and fix errors.
-When the task is complete, call finish_task with a concise summary and mention important files changed.
+Use write_file or replace_in_file for file edits. Use run_command mainly for commands and tests.
+After the requested tests pass, call finish_task immediately with a concise summary.
 Do not ask for secrets. Do not claim a command passed unless run_command showed success.
 """
 
@@ -51,7 +52,7 @@ class CodingAgent:
                     }
                 )
 
-        return "Reached the maximum number of steps before the model produced a final answer."
+        return self._finalize_without_tools(messages)
 
     def _summary_from_tool_result(self, result_json: str) -> str:
         import json
@@ -61,3 +62,13 @@ class CodingAgent:
         except json.JSONDecodeError:
             return "Task finished."
         return str(result.get("summary") or "Task finished.")
+
+    def _finalize_without_tools(self, messages: List[Dict[str, Any]]) -> str:
+        messages.append(
+            {
+                "role": "user",
+                "content": "Stop using tools. Summarize what was completed and what checks passed.",
+            }
+        )
+        response = self.client.complete(messages, [])
+        return response["choices"][0]["message"].get("content") or "Task stopped after the configured step limit."
