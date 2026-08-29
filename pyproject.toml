@@ -1,0 +1,9 @@
+[project]
+name = "coding-agent-nju"
+version = "0.1.0"
+description = "A small coding agent for the NJU software engineering recommendation assessment."
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+coding-agent = "coding_agent_nju.cli:main"
