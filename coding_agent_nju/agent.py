@@ -8,13 +8,14 @@ SYSTEM_PROMPT = """You are a coding agent running on the user's local machine.
 You can inspect and modify files only through the provided tools.
 Work in small steps: inspect files, write code, run commands or tests, and fix errors.
 Use write_file or replace_in_file for file edits. Use run_command mainly for commands and tests.
+run_command already runs inside the workspace; do not use cd, absolute paths, or path-changing shell commands.
 After the requested tests pass, call finish_task immediately with a concise summary.
 Do not ask for secrets. Do not claim a command passed unless run_command showed success.
 """
 
 
 class CodingAgent:
-    def __init__(self, client: ChatClient, toolbox: ToolBox, max_steps: int = 12) -> None:
+    def __init__(self, client: ChatClient, toolbox: ToolBox, max_steps: int = 20) -> None:
         self.client = client
         self.toolbox = toolbox
         self.max_steps = max_steps

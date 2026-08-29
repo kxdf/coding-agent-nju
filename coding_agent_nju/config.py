@@ -21,7 +21,7 @@ def load_config() -> Config:
     base_url = os.environ.get("OPENAI_BASE_URL", "https://api.deepseek.com").strip()
     model = os.environ.get("MODEL_NAME", "deepseek-chat").strip()
     workspace = Path(os.environ.get("AGENT_WORKSPACE", "agent_workspace")).resolve()
-    max_steps = int(os.environ.get("AGENT_MAX_STEPS", "12"))
+    max_steps = int(os.environ.get("AGENT_MAX_STEPS", "20"))
     timeout_seconds = int(os.environ.get("AGENT_COMMAND_TIMEOUT", "20"))
 
     return Config(
