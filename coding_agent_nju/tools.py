@@ -80,6 +80,20 @@ class ToolBox:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "finish_task",
+                    "description": "Finish the task after the requested code changes and checks are complete.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "summary": {"type": "string", "description": "Short summary of completed work."}
+                        },
+                        "required": ["summary"],
+                    },
+                },
+            },
         ]
 
     def call(self, name: str, arguments_json: str) -> str:
@@ -94,6 +108,7 @@ class ToolBox:
             "write_file": self.write_file,
             "replace_in_file": self.replace_in_file,
             "run_command": self.run_command,
+            "finish_task": self.finish_task,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -157,6 +172,9 @@ class ToolBox:
             "stdout": completed.stdout[-6000:],
             "stderr": completed.stderr[-6000:],
         }
+
+    def finish_task(self, summary: str) -> Dict[str, Any]:
+        return {"ok": True, "finished": True, "summary": summary}
 
     def _safe_path(self, path: str) -> Path:
         candidate = (self.workspace / path).resolve()

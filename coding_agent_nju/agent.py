@@ -7,7 +7,7 @@ from .tools import ToolBox
 SYSTEM_PROMPT = """You are a coding agent running on the user's local machine.
 You can inspect and modify files only through the provided tools.
 Work in small steps: inspect files, write code, run commands or tests, and fix errors.
-When the task is complete, respond with a concise summary and mention important files changed.
+When the task is complete, call finish_task with a concise summary and mention important files changed.
 Do not ask for secrets. Do not claim a command passed unless run_command showed success.
 """
 
@@ -41,6 +41,8 @@ class CodingAgent:
                 print(f"[tool] {name} {arguments}")
                 result = self.toolbox.call(name, arguments)
                 print(f"[tool-result] {result[:500]}")
+                if name == "finish_task":
+                    return self._summary_from_tool_result(result)
                 messages.append(
                     {
                         "role": "tool",
@@ -50,3 +52,12 @@ class CodingAgent:
                 )
 
         return "Reached the maximum number of steps before the model produced a final answer."
+
+    def _summary_from_tool_result(self, result_json: str) -> str:
+        import json
+
+        try:
+            result = json.loads(result_json)
+        except json.JSONDecodeError:
+            return "Task finished."
+        return str(result.get("summary") or "Task finished.")

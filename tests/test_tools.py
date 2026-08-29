@@ -29,6 +29,17 @@ class ToolBoxTests(unittest.TestCase):
             result = tools.call("read_file", '{"path": "../secret.txt"}')
             self.assertTrue(result.startswith('{"ok": false'))
 
+    def test_finish_task_returns_summary(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ToolBox(directory)
+            result = tools.finish_task("created files and tests passed")
+            self.assertEqual(
+                result,
+                {"ok": True, "finished": True, "summary": "created files and tests passed"},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
