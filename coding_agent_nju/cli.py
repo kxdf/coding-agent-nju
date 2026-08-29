@@ -9,6 +9,8 @@ from .tools import ToolBox
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a small coding agent.")
+    parser.add_argument("--yes", action="store_true", help="Automatically approve write and command tools.")
+    parser.add_argument("--no-confirm", action="store_true", help="Alias for --yes.")
     parser.add_argument("task", nargs="*", help="Programming task for the agent.")
     args = parser.parse_args()
 
@@ -26,7 +28,13 @@ def main() -> None:
         raise SystemExit(2)
 
     client = ChatClient(config.api_key, config.base_url, config.model)
-    toolbox = ToolBox(config.workspace, config.timeout_seconds)
+    auto_approve = args.yes or args.no_confirm or config.auto_approve
+    toolbox = ToolBox(
+        config.workspace,
+        config.timeout_seconds,
+        auto_approve=auto_approve,
+        enable_logging=config.enable_logging,
+    )
     agent = CodingAgent(client, toolbox, config.max_steps)
 
     print(f"Workspace: {config.workspace}")

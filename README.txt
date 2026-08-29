@@ -15,8 +15,10 @@ Git仓库地址：https://github.com/kxdf/coding-agent-nju
 特色功能：
 1. 本地工具均由项目代码实现，包括 list_files、read_file、write_file、replace_in_file、run_command。
 2. 文件操作限制在工作目录内，避免模型越界读写系统文件。
-3. 命令执行设置超时并返回 stdout、stderr 和退出码，便于 agent 根据错误继续修正。
-4. 支持通过 AGENT_WORKSPACE 指定独立工作区，方便演示真实编程任务。
+3. 写文件、替换文件和执行命令默认需要用户确认；录屏演示可加 --yes 自动批准。
+4. run_command 内置安全策略，会拦截删除、关机、git push、目录跳转等危险命令。
+5. 每次工具调用写入 agent_workspace/.agent_logs/session.jsonl，便于复盘，日志会截断文件内容。
+6. 支持通过 AGENT_WORKSPACE 指定独立工作区，方便演示真实编程任务。
 
 凭据说明：
 API Key 只通过环境变量或未入库配置提供，不写入仓库、README 或视频。

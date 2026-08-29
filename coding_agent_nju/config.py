@@ -11,6 +11,8 @@ class Config:
     workspace: Path
     max_steps: int
     timeout_seconds: int
+    auto_approve: bool
+    enable_logging: bool
 
 
 def load_config() -> Config:
@@ -23,6 +25,8 @@ def load_config() -> Config:
     workspace = Path(os.environ.get("AGENT_WORKSPACE", "agent_workspace")).resolve()
     max_steps = int(os.environ.get("AGENT_MAX_STEPS", "20"))
     timeout_seconds = int(os.environ.get("AGENT_COMMAND_TIMEOUT", "20"))
+    auto_approve = _env_bool("AGENT_AUTO_APPROVE", False)
+    enable_logging = _env_bool("AGENT_ENABLE_LOGGING", True)
 
     return Config(
         api_key=api_key,
@@ -31,4 +35,13 @@ def load_config() -> Config:
         workspace=workspace,
         max_steps=max_steps,
         timeout_seconds=timeout_seconds,
+        auto_approve=auto_approve,
+        enable_logging=enable_logging,
     )
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
