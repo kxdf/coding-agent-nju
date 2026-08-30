@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any, Callable, Dict, List
 
 class ToolBox:
     HIGH_RISK_TOOLS = {"write_file", "replace_in_file", "run_command"}
+    SENSITIVE_NAMES = {"api_key", "apikey", "authorization", "password", "secret", "token"}
 
     def __init__(
         self,
@@ -163,6 +165,24 @@ class ToolBox:
         self._log_tool_call(name, arguments, approved=approved, blocked=blocked, result=result)
         return json.dumps(result, ensure_ascii=False)
 
+    def preview_call(self, name: str, arguments_json: str) -> str:
+        try:
+            arguments = json.loads(arguments_json or "{}")
+        except json.JSONDecodeError:
+            return self._redact_text(arguments_json or "")[:500]
+        if not isinstance(arguments, dict):
+            return self._redact_text(str(arguments))[:500]
+        return self._preview_arguments(name, arguments)
+
+    def preview_result(self, result_json: str) -> str:
+        try:
+            result = json.loads(result_json)
+        except json.JSONDecodeError:
+            return self._redact_text(result_json)[:500]
+        if not isinstance(result, dict):
+            return self._redact_text(str(result))[:500]
+        return json.dumps(self._result_preview(result), ensure_ascii=False)[:500]
+
     def list_files(self, path: str = ".") -> Dict[str, Any]:
         root = self._safe_path(path)
         if not root.exists():
@@ -293,13 +313,15 @@ class ToolBox:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def _sanitize_arguments(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        safe = dict(arguments)
+        safe = self._sanitize_value(arguments)
         if name == "write_file" and "content" in safe:
             content = str(safe["content"])
-            safe["content"] = {
-                "chars": len(content),
-                "preview": content[:120],
-            }
+            original_content = str(arguments.get("content", ""))
+            safe["content"] = self._text_summary(original_content, 120)
+        if name == "replace_in_file":
+            for field in ("old", "new"):
+                if field in arguments:
+                    safe[field] = self._text_summary(str(arguments[field]), 120)
         return safe
 
     def _result_preview(self, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -307,13 +329,38 @@ class ToolBox:
         for key, value in result.items():
             if key == "content":
                 text = str(value)
-                preview[key] = {"chars": len(text), "preview": text[:120]}
+                preview[key] = self._text_summary(text, 120)
             elif key in {"stdout", "stderr", "error", "summary"}:
                 text = str(value)
-                preview[key] = text[:300]
+                preview[key] = self._redact_text(text)[:300]
             else:
-                preview[key] = value
+                preview[key] = self._sanitize_value(value)
         return preview
 
     def _preview_arguments(self, name: str, arguments: Dict[str, Any]) -> str:
         return json.dumps(self._sanitize_arguments(name, arguments), ensure_ascii=False)[:500]
+
+    def _sanitize_value(self, value: Any, key: str = "") -> Any:
+        normalized_key = key.lower().replace("-", "_")
+        if any(name in normalized_key for name in self.SENSITIVE_NAMES):
+            return "[REDACTED]"
+        if isinstance(value, dict):
+            return {str(item_key): self._sanitize_value(item_value, str(item_key)) for item_key, item_value in value.items()}
+        if isinstance(value, list):
+            return [self._sanitize_value(item) for item in value]
+        if isinstance(value, str):
+            return self._redact_text(value)
+        return value
+
+    def _text_summary(self, text: str, preview_chars: int) -> Dict[str, Any]:
+        return {
+            "chars": len(text),
+            "preview": self._redact_text(text)[:preview_chars],
+        }
+
+    def _redact_text(self, text: str) -> str:
+        redacted = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", text)
+        assignment = re.compile(
+            r"(?i)((?:api[_-]?key|token|secret|password)\s*[:=]\s*)([^\s,;}]+)"
+        )
+        return assignment.sub(r"\1[REDACTED]", redacted)

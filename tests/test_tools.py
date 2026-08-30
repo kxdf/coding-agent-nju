@@ -1,5 +1,7 @@
+import io
 import json
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from coding_agent_nju.tools import ToolBox
@@ -48,7 +50,8 @@ class ToolBoxTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             tools = ToolBox(directory)
             with patch("builtins.input", return_value="n"):
-                result = json.loads(tools.call("write_file", '{"path": "x.txt", "content": "no"}'))
+                with redirect_stdout(io.StringIO()):
+                    result = json.loads(tools.call("write_file", '{"path": "x.txt", "content": "no"}'))
 
             self.assertFalse(result["ok"])
             self.assertTrue(result["denied"])
@@ -111,6 +114,50 @@ class ToolBoxTests(unittest.TestCase):
             self.assertEqual(record["arguments"]["content"]["chars"], 200)
             self.assertEqual(len(record["arguments"]["content"]["preview"]), 120)
             self.assertNotIn(secret_content, log_path.read_text(encoding="utf-8"))
+
+    def test_logs_redact_credentials_and_large_replacements(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ToolBox(directory, auto_approve=True)
+            tools.write_file("settings.txt", "old value")
+            secret = "sk-" + "examplecredential123456789"
+            arguments = {
+                "path": "settings.txt",
+                "old": "old value",
+                "new": "x" * 200 + " API_KEY=" + secret,
+                "token": "private-token-value",
+            }
+            result = json.loads(tools.call("replace_in_file", json.dumps(arguments)))
+
+            self.assertFalse(result["ok"])
+            log_path = tools.workspace / ".agent_logs" / "session.jsonl"
+            record = json.loads(log_path.read_text(encoding="utf-8").splitlines()[-1])
+            self.assertEqual(record["arguments"]["token"], "[REDACTED]")
+            self.assertEqual(record["arguments"]["new"]["chars"], len(arguments["new"]))
+            self.assertLessEqual(len(record["arguments"]["new"]["preview"]), 120)
+            self.assertNotIn(secret, log_path.read_text(encoding="utf-8"))
+
+    def test_console_preview_redacts_credentials(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ToolBox(directory, auto_approve=True, enable_logging=False)
+            secret = "sk-" + "examplecredential123456789"
+            preview = tools.preview_call(
+                "run_command",
+                json.dumps({"command": f"echo API_KEY={secret}", "password": "visible-password"}),
+            )
+
+            self.assertNotIn(secret, preview)
+            self.assertNotIn("visible-password", preview)
+            self.assertIn("[REDACTED]", preview)
+
+            result_preview = tools.preview_result(
+                json.dumps({"ok": True, "content": f"OPENAI_API_KEY={secret}"})
+            )
+            self.assertNotIn(secret, result_preview)
+            self.assertIn("[REDACTED]", result_preview)
 
 
 if __name__ == "__main__":

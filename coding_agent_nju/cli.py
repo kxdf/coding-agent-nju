@@ -39,7 +39,11 @@ def main() -> None:
 
     print(f"Workspace: {config.workspace}")
     print(f"Model: {config.model}")
-    answer = agent.run(task)
+    try:
+        answer = agent.run(task)
+    except Exception as exc:
+        print(f"Agent error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
     print("\nFinal answer:")
     print(answer)
 
