@@ -1,26 +1,29 @@
 Git仓库地址：https://github.com/kxdf/coding-agent-nju
 
-运行方法：
-1. 安装 Python 3.9 或更高版本。
-2. 设置环境变量：
-   OPENAI_API_KEY=你的模型 API Key
-   OPENAI_BASE_URL=https://api.deepseek.com
-   MODEL_NAME=deepseek-chat
-3. 在项目根目录运行：
-   python -m coding_agent_nju "创建一个 Python 函数并写测试"
-   三Agent模式：python -m coding_agent_nju --multi-agent --yes "创建一个 Python 函数并写测试"
+一、如何运行
+Python 3.9或更高版本，无第三方依赖。
 
-项目说明：
-本项目不使用任何 agent 框架，直接调用 OpenAI 兼容接口。程序自行维护历史、执行工具、解析 tool calls 和控制终止。可选三Agent模式由 Planner 制定计划、Executor 实现、Reviewer 独立复测；三个角色使用同一模型和独立历史，由本地协调器串联。详细原理见 DESIGN.md。
+在PowerShell中设置环境变量：
+  $env:OPENAI_API_KEY="你的模型API Key"
+  $env:OPENAI_BASE_URL="https://api.deepseek.com"
+  $env:MODEL_NAME="deepseek-chat"
 
-特色功能：
-1. 自行实现目录、读写、替换、命令执行和任务结束工具。
-2. 文件路径限制在独立工作区内，防止越界读写。
-3. 写文件、替换文件和执行命令默认需要用户确认；录屏演示可加 --yes 自动批准。
-4. 命令安全策略拦截删除、关机、git push、目录跳转等危险操作。
-5. 工具调用写入 JSONL 审计日志，大段内容会截断，凭据会脱敏。
-6. 支持通过 AGENT_WORKSPACE 指定工作区。
-7. Reviewer 只有读文件和运行测试权限；审查失败时最多自动返工一次。
+单Agent模式：
+  python -m coding_agent_nju "创建一个Python函数并编写测试"
 
-凭据说明：
-API Key 只通过环境变量或未入库配置提供，不写入仓库、README 或视频。
+三Agent协同模式：
+  python -m coding_agent_nju --multi-agent --yes "创建一个Python函数并编写测试"
+
+运行项目测试：
+  python -m unittest discover -s tests -v
+
+二、特色功能
+1. 不使用Agent框架或SDK；自行实现对话历史、工具定义、tool calls解析、执行循环、终止和错误处理。
+2. 本地提供目录、文件读写与替换、命令执行和显式结束工具。模型提出结构化调用，ToolBox负责真实执行。
+3. 文件限制在独立工作区；写入、替换和命令默认需要确认，并拦截删除、关机、目录跳转、git push等操作。
+4. 工具调用写入JSON Lines日志，记录角色、参数摘要、批准和拦截状态；内容截断、凭据脱敏，日志与工作区不入库。
+5. 支持单Agent和Planner、Executor、Reviewer三Agent模式。三者共用模型，但提示词、工具权限和历史独立，仅传递结构化结果。
+6. Planner只读规划；Executor编写代码并测试；Reviewer不能修改文件，必须读取文件并独立复测。失败时最多返工一次，避免无限循环和费用失控。
+
+三、其它说明
+项目最初实现单Agent闭环，随后增加三Agent协同。职责分离减少同时规划、实现和自我验证产生的偏差；独立Reviewer提供第二次证据检查，结构化交接可控制上下文并提高可解释性。--yes只跳过人工确认，不关闭安全策略。
