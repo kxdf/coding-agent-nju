@@ -8,6 +8,17 @@ from coding_agent_nju.tools import ToolBox
 
 
 class ToolBoxTests(unittest.TestCase):
+    def test_default_schemas_remain_single_agent_tools(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ToolBox(directory, enable_logging=False)
+            names = {item["function"]["name"] for item in tools.schemas()}
+
+        self.assertEqual(names, ToolBox.DEFAULT_TOOL_NAMES)
+        self.assertNotIn("submit_plan", names)
+        self.assertNotIn("finish_review", names)
+
     def test_file_tools_stay_inside_workspace(self) -> None:
         with self.subTest("write, read and replace"):
             import tempfile
@@ -158,6 +169,33 @@ class ToolBoxTests(unittest.TestCase):
             )
             self.assertNotIn(secret, result_preview)
             self.assertIn("[REDACTED]", result_preview)
+
+    def test_role_protocols_validate_structured_results(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ToolBox(directory, enable_logging=False)
+            plan = tools.submit_plan("goal", ["step"], ["check"])
+            approved = tools.finish_review(True, "passed", [])
+            invalid_approval = tools.finish_review(True, "not consistent", ["issue"])
+            invalid_rejection = tools.finish_review(False, "not consistent", [])
+
+        self.assertTrue(plan["finished"])
+        self.assertEqual(plan["plan"]["steps"], ["step"])
+        self.assertTrue(approved["approved"])
+        self.assertFalse(invalid_approval["ok"])
+        self.assertFalse(invalid_rejection["ok"])
+
+    def test_log_records_agent_role(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ToolBox(directory, enable_logging=True, agent_role="reviewer")
+            json.loads(tools.call("list_files", "{}"))
+            log_path = tools.workspace / ".agent_logs" / "session.jsonl"
+            record = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+
+        self.assertEqual(record["agent_role"], "reviewer")
 
 
 if __name__ == "__main__":

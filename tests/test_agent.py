@@ -72,6 +72,18 @@ class CodingAgentTests(unittest.TestCase):
         self.assertEqual(answer, "Nothing to change.")
         self.assertEqual(len(client.calls), 1)
 
+    def test_run_result_exposes_structured_termination_metadata(self):
+        client = FakeChatClient([assistant_message(content="Inspected.")])
+
+        with tempfile.TemporaryDirectory() as directory:
+            agent = CodingAgent(client, ToolBox(directory, enable_logging=False))
+            with redirect_stdout(io.StringIO()):
+                result = agent.run_result("Inspect the task")
+
+        self.assertEqual(result.summary, "Inspected.")
+        self.assertEqual(result.termination, "text")
+        self.assertEqual(result.steps, 1)
+
     def test_step_limit_requests_a_final_summary_without_tools(self):
         client = FakeChatClient(
             [

@@ -3,10 +3,18 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Set
 
 
 class ToolBox:
+    DEFAULT_TOOL_NAMES = {
+        "list_files",
+        "read_file",
+        "write_file",
+        "replace_in_file",
+        "run_command",
+        "finish_task",
+    }
     HIGH_RISK_TOOLS = {"write_file", "replace_in_file", "run_command"}
     SENSITIVE_NAMES = {"api_key", "apikey", "authorization", "password", "secret", "token"}
 
@@ -17,16 +25,18 @@ class ToolBox:
         require_confirmation: bool = True,
         auto_approve: bool = False,
         enable_logging: bool = True,
+        agent_role: str = "agent",
     ) -> None:
         self.workspace = Path(workspace).resolve()
         self.timeout_seconds = timeout_seconds
         self.require_confirmation = require_confirmation
         self.auto_approve = auto_approve
         self.enable_logging = enable_logging
+        self.agent_role = agent_role
         self.workspace.mkdir(parents=True, exist_ok=True)
 
-    def schemas(self) -> List[Dict[str, Any]]:
-        return [
+    def schemas(self, allowed_names: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+        schemas = [
             {
                 "type": "function",
                 "function": {
@@ -109,9 +119,48 @@ class ToolBox:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "submit_plan",
+                    "description": "Submit the final structured implementation plan.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "goal": {"type": "string"},
+                            "steps": {"type": "array", "items": {"type": "string"}},
+                            "checks": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["goal", "steps", "checks"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "finish_review",
+                    "description": "Finish an independent review with an approval decision and concrete issues.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "approved": {"type": "boolean"},
+                            "summary": {"type": "string"},
+                            "issues": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["approved", "summary", "issues"],
+                    },
+                },
+            },
         ]
+        names = self.DEFAULT_TOOL_NAMES if allowed_names is None else allowed_names
+        return [schema for schema in schemas if schema["function"]["name"] in names]
 
-    def call(self, name: str, arguments_json: str) -> str:
+    def call(
+        self,
+        name: str,
+        arguments_json: str,
+        allowed_names: Optional[Set[str]] = None,
+    ) -> str:
         try:
             arguments = json.loads(arguments_json or "{}")
         except json.JSONDecodeError as exc:
@@ -125,6 +174,15 @@ class ToolBox:
             )
             return json.dumps(result, ensure_ascii=False)
 
+        if allowed_names is not None and name not in allowed_names:
+            result = {
+                "ok": False,
+                "blocked": True,
+                "error": f"Tool not allowed for {self.agent_role}: {name}",
+            }
+            self._log_tool_call(name, arguments, approved=False, blocked=True, result=result)
+            return json.dumps(result, ensure_ascii=False)
+
         handlers: Dict[str, Callable[..., Dict[str, Any]]] = {
             "list_files": self.list_files,
             "read_file": self.read_file,
@@ -132,6 +190,8 @@ class ToolBox:
             "replace_in_file": self.replace_in_file,
             "run_command": self.run_command,
             "finish_task": self.finish_task,
+            "submit_plan": self.submit_plan,
+            "finish_review": self.finish_review,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -237,6 +297,35 @@ class ToolBox:
     def finish_task(self, summary: str) -> Dict[str, Any]:
         return {"ok": True, "finished": True, "summary": summary}
 
+    def submit_plan(self, goal: str, steps: List[str], checks: List[str]) -> Dict[str, Any]:
+        if not isinstance(goal, str) or not goal.strip():
+            return {"ok": False, "error": "Plan goal must be a non-empty string."}
+        if not isinstance(steps, list) or not steps or not all(isinstance(item, str) and item.strip() for item in steps):
+            return {"ok": False, "error": "Plan steps must be a non-empty list of strings."}
+        if not isinstance(checks, list) or not checks or not all(isinstance(item, str) and item.strip() for item in checks):
+            return {"ok": False, "error": "Plan checks must be a non-empty list of strings."}
+        plan = {"goal": goal.strip(), "steps": steps, "checks": checks}
+        return {"ok": True, "finished": True, "summary": goal.strip(), "plan": plan}
+
+    def finish_review(self, approved: bool, summary: str, issues: List[str]) -> Dict[str, Any]:
+        if not isinstance(approved, bool):
+            return {"ok": False, "error": "Review approved must be a boolean."}
+        if not isinstance(summary, str) or not summary.strip():
+            return {"ok": False, "error": "Review summary must be a non-empty string."}
+        if not isinstance(issues, list) or not all(isinstance(item, str) and item.strip() for item in issues):
+            return {"ok": False, "error": "Review issues must be a list of non-empty strings."}
+        if approved and issues:
+            return {"ok": False, "error": "An approved review must not contain issues."}
+        if not approved and not issues:
+            return {"ok": False, "error": "A rejected review must contain at least one issue."}
+        return {
+            "ok": True,
+            "finished": True,
+            "approved": approved,
+            "summary": summary.strip(),
+            "issues": issues,
+        }
+
     def _safe_path(self, path: str) -> Path:
         candidate = (self.workspace / path).resolve()
         if candidate != self.workspace and self.workspace not in candidate.parents:
@@ -302,6 +391,7 @@ class ToolBox:
         log_dir.mkdir(parents=True, exist_ok=True)
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "agent_role": self.agent_role,
             "tool": name,
             "arguments": self._sanitize_arguments(name, arguments),
             "approved": approved,
